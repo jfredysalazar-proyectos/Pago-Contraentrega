@@ -7,6 +7,8 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import feedRouter from "../feeds";
+import whatsappRouter from "../whatsapp";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -35,6 +37,13 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+  // Feeds & SEO routes (before tRPC)
+  app.use("/api", feedRouter);
+  app.use("/sitemap.xml", feedRouter);
+  app.use("/robots.txt", feedRouter);
+  // WhatsApp webhook & tracking
+  app.use("/", whatsappRouter);
+
   // tRPC API
   app.use(
     "/api/trpc",
