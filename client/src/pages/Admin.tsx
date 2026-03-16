@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 import {
   Package, ShoppingCart, Settings, RefreshCw, Eye, EyeOff,
   Star, StarOff, TrendingUp, Users, Truck, CheckCircle,
   AlertCircle, Clock, BarChart3, Zap, Save, ExternalLink,
-  MessageCircle, Activity
+  MessageCircle, Activity, Lock, User
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,12 +31,16 @@ function StatCard({ icon, label, value, color }: { icon: any; label: string; val
 }
 
 export default function Admin() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading, refresh } = useAuth();
   const [syncLoading, setSyncLoading] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsValues, setSettingsValues] = useState<Record<string, string>>({});
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
 
   const utils = trpc.useUtils();
 
@@ -102,18 +105,85 @@ export default function Admin() {
     },
   });
 
+  const adminLoginMutation = trpc.auth.adminLogin.useMutation({
+    onSuccess: async () => {
+      await refresh();
+      toast.success("Sesión iniciada correctamente");
+    },
+    onError: (e) => {
+      toast.error(e.message);
+      setLoginLoading(false);
+    },
+  });
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginUsername || !loginPassword) return;
+    setLoginLoading(true);
+    adminLoginMutation.mutate({ username: loginUsername, password: loginPassword });
+  };
+
   if (loading) return null;
 
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--background)" }}>
-        <div className="text-center">
-          <div className="text-5xl mb-4">🔐</div>
-          <h2 className="text-xl font-display font-bold mb-2" style={{ color: "var(--brand-navy)" }}>Acceso Restringido</h2>
-          <p className="text-sm mb-4" style={{ color: "var(--muted-foreground)" }}>Debes iniciar sesión para acceder al panel.</p>
-          <Button onClick={() => window.location.href = getLoginUrl()} style={{ background: "var(--brand-gold)", color: "white" }}>
-            Iniciar Sesión
-          </Button>
+        <div className="w-full max-w-sm mx-auto p-8 rounded-2xl border border-border shadow-lg" style={{ background: "var(--card)" }}>
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: "var(--brand-gold)18" }}>
+              <Lock className="w-8 h-8" style={{ color: "var(--brand-gold)" }} />
+            </div>
+            <h2 className="text-2xl font-display font-bold" style={{ color: "var(--brand-navy)" }}>Panel de Administración</h2>
+            <p className="text-sm mt-1" style={{ color: "var(--muted-foreground)" }}>Ingresa tus credenciales para continuar</p>
+          </div>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-sm font-medium" style={{ color: "var(--brand-navy)" }}>Usuario</label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--muted-foreground)" }} />
+                <Input
+                  type="text"
+                  placeholder="Nombre de usuario"
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  className="pl-9"
+                  autoComplete="username"
+                  required
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium" style={{ color: "var(--brand-navy)" }}>Contraseña</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--muted-foreground)" }} />
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Contraseña"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className="pl-9 pr-10"
+                  autoComplete="current-password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loginLoading}
+              style={{ background: "var(--brand-gold)", color: "white" }}
+            >
+              {loginLoading ? "Ingresando..." : "Ingresar al Panel"}
+            </Button>
+          </form>
         </div>
       </div>
     );

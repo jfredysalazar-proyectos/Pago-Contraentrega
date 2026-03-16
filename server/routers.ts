@@ -1,14 +1,16 @@
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
+import { sdk } from "./_core/sdk";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { getDb } from "./db";
-import { products, orders, syncLogs, settings, whatsappConversations, whatsappMessages } from "../drizzle/schema";
+import { getDb, getUserByUsername } from "./db";
+import { products, orders, syncLogs, settings, whatsappConversations, whatsappMessages, users } from "../drizzle/schema";
 import { eq, desc, like, and, or, sql, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { invokeLLM } from "./_core/llm";
+import bcrypt from "bcryptjs";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -537,6 +539,36 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+    adminLogin: publicProcedure
+      .input(z.object({
+        username: z.string().min(1),
+        password: z.string().min(1),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const user = await getUserByUsername(input.username);
+        if (!user || !user.passwordHash) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Usuario o contraseña incorrectos" });
+        }
+        const valid = await bcrypt.compare(input.password, user.passwordHash);
+        if (!valid) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Usuario o contraseña incorrectos" });
+        }
+        if (user.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "No tienes permisos de administrador" });
+        }
+        const sessionToken = await sdk.createSessionToken(user.openId, {
+          name: user.name || user.username || "Admin",
+          expiresInMs: ONE_YEAR_MS,
+        });
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+        // Update lastSignedIn
+        const db = await getDb();
+        if (db) {
+          await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, user.id));
+        }
+        return { success: true, user: { id: user.id, name: user.name, username: user.username, role: user.role } };
+      }),
   }),
   products: productsRouter,
   sync: syncRouter,
