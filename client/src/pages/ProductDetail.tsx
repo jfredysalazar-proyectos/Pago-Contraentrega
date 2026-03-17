@@ -76,59 +76,161 @@ export default function ProductDetail() {
 
   const waLink = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(waMessage)}`;
 
-  // SEO & JSON-LD
+  // SEO & JSON-LD — aplica a todos los productos automáticamente
   useEffect(() => {
     if (!product) return;
 
-    document.title = `${product.metaTitle ?? product.name} | Pago Contra Entrega`;
+    const storeUrl = window.location.origin;
+    const productUrl = `${storeUrl}/producto/${product.slug}`;
 
-    // Meta description
-    let metaDesc = document.querySelector('meta[name="description"]');
-    if (!metaDesc) {
-      metaDesc = document.createElement("meta");
-      metaDesc.setAttribute("name", "description");
-      document.head.appendChild(metaDesc);
-    }
-    metaDesc.setAttribute("content", product.metaDescription ?? product.shortDescription ?? product.description?.substring(0, 160) ?? "");
+    // ── Título (máx 60 chars para Google) ──────────────────────────────────
+    const seoTitle = product.metaTitle
+      ? `${product.metaTitle} | Pago Contra Entrega`
+      : `${product.name} Colombia | Pago Contra Entrega`;
+    document.title = seoTitle;
 
-    // Open Graph
-    const ogTags: Record<string, string> = {
-      "og:title": product.name,
-      "og:description": product.shortDescription ?? product.description?.substring(0, 160) ?? "",
-      "og:image": product.mainImage ?? "",
-      "og:url": window.location.href,
-      "og:type": "product",
-    };
-    Object.entries(ogTags).forEach(([property, content]) => {
-      let tag = document.querySelector(`meta[property="${property}"]`);
+    // ── Helper para upsert meta tags ────────────────────────────────────────
+    const setMeta = (attr: string, value: string, content: string) => {
+      let tag = document.querySelector(`meta[${attr}="${value}"]`) as HTMLMetaElement | null;
       if (!tag) {
         tag = document.createElement("meta");
-        tag.setAttribute("property", property);
+        tag.setAttribute(attr, value);
         document.head.appendChild(tag);
       }
       tag.setAttribute("content", content);
-    });
-
-    // JSON-LD structured data
-    const jsonLd = {
-      "@context": "https://schema.org/",
-      "@type": "Product",
-      name: product.name,
-      description: product.description ?? product.shortDescription ?? "",
-      image: allImages,
-      sku: product.sku ?? product.dropiId,
-      brand: product.brand ? { "@type": "Brand", name: product.brand } : undefined,
-      offers: {
-        "@type": "Offer",
-        url: window.location.href,
-        priceCurrency: "COP",
-        price: String(price),
-        priceValidUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-        availability: inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-        seller: { "@type": "Organization", name: "Pago Contra Entrega" },
-      },
     };
 
+    // ── Helper para upsert link tags ────────────────────────────────────────
+    const setLink = (rel: string, href: string) => {
+      let tag = document.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
+      if (!tag) {
+        tag = document.createElement("link");
+        tag.setAttribute("rel", rel);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute("href", href);
+    };
+
+    // ── Meta description (máx 160 chars) ───────────────────────────────────
+    const rawDesc = product.metaDescription
+      ?? product.shortDescription
+      ?? product.description?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().substring(0, 160)
+      ?? "";
+    const metaDesc = rawDesc.substring(0, 160);
+    setMeta("name", "description", metaDesc);
+
+    // ── Keywords (tags del producto) ────────────────────────────────────────
+    const tags = (product.tags as string[] | null) ?? [];
+    if (tags.length > 0) {
+      setMeta("name", "keywords", tags.join(", "));
+    }
+
+    // ── Robots ──────────────────────────────────────────────────────────────
+    setMeta("name", "robots", "index, follow");
+
+    // ── Canonical (evita contenido duplicado) ───────────────────────────────
+    setLink("canonical", productUrl);
+
+    // ── Open Graph (Facebook, WhatsApp, LinkedIn) ───────────────────────────
+    setMeta("property", "og:type", "product");
+    setMeta("property", "og:title", seoTitle);
+    setMeta("property", "og:description", metaDesc);
+    setMeta("property", "og:image", product.mainImage ?? "");
+    setMeta("property", "og:image:width", "800");
+    setMeta("property", "og:image:height", "800");
+    setMeta("property", "og:url", productUrl);
+    setMeta("property", "og:locale", "es_CO");
+    setMeta("property", "og:site_name", "Pago Contra Entrega");
+    setMeta("property", "product:price:amount", String(price));
+    setMeta("property", "product:price:currency", "COP");
+    setMeta("property", "product:availability", inStock ? "in stock" : "out of stock");
+    setMeta("property", "product:condition", "new");
+    if (product.brand) setMeta("property", "product:brand", product.brand);
+    if (product.category) setMeta("property", "product:category", product.category);
+
+    // ── Twitter Card ────────────────────────────────────────────────────────
+    setMeta("name", "twitter:card", "summary_large_image");
+    setMeta("name", "twitter:title", seoTitle);
+    setMeta("name", "twitter:description", metaDesc);
+    setMeta("name", "twitter:image", product.mainImage ?? "");
+
+    // ── JSON-LD Schema.org Product (Rich Results de Google) ─────────────────
+    // Incluye: Product, Offer, BreadcrumbList, Organization
+    const priceValidUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+    const jsonLd = [
+      {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "@id": `${productUrl}#product`,
+        name: seoTitle.replace(" | Pago Contra Entrega", ""),
+        description: rawDesc,
+        image: allImages.filter(Boolean),
+        url: productUrl,
+        sku: product.sku ?? product.dropiId ?? undefined,
+        mpn: product.sku ?? product.dropiId ?? undefined,
+        brand: {
+          "@type": "Brand",
+          name: product.brand ?? "Genérico",
+        },
+        category: product.category ?? undefined,
+        ...(tags.length > 0 ? { keywords: tags.join(", ") } : {}),
+        offers: {
+          "@type": "Offer",
+          "@id": `${productUrl}#offer`,
+          url: productUrl,
+          priceCurrency: "COP",
+          price: price.toFixed(0),
+          priceValidUntil,
+          availability: inStock
+            ? "https://schema.org/InStock"
+            : "https://schema.org/OutOfStock",
+          itemCondition: "https://schema.org/NewCondition",
+          seller: {
+            "@type": "Organization",
+            name: "Pago Contra Entrega",
+            url: storeUrl,
+          },
+          shippingDetails: {
+            "@type": "OfferShippingDetails",
+            shippingRate: {
+              "@type": "MonetaryAmount",
+              value: "0",
+              currency: "COP",
+            },
+            shippingDestination: {
+              "@type": "DefinedRegion",
+              addressCountry: "CO",
+            },
+            deliveryTime: {
+              "@type": "ShippingDeliveryTime",
+              handlingTime: { "@type": "QuantitativeValue", minValue: 1, maxValue: 2, unitCode: "DAY" },
+              transitTime: { "@type": "QuantitativeValue", minValue: 2, maxValue: 5, unitCode: "DAY" },
+            },
+          },
+          hasMerchantReturnPolicy: {
+            "@type": "MerchantReturnPolicy",
+            applicableCountry: "CO",
+            returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
+            merchantReturnDays: 7,
+            returnMethod: "https://schema.org/ReturnByMail",
+            returnFees: "https://schema.org/FreeReturn",
+          },
+        },
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Inicio", item: storeUrl },
+          { "@type": "ListItem", position: 2, name: "Productos", item: `${storeUrl}/productos` },
+          ...(product.category ? [{ "@type": "ListItem", position: 3, name: product.category, item: `${storeUrl}/productos?categoria=${product.category}` }] : []),
+          { "@type": "ListItem", position: product.category ? 4 : 3, name: product.name, item: productUrl },
+        ],
+      },
+    ];
+
+    // Insertar o actualizar el script JSON-LD
     let script = document.querySelector("#product-jsonld") as HTMLScriptElement | null;
     if (!script) {
       script = document.createElement("script");
@@ -140,8 +242,10 @@ export default function ProductDetail() {
 
     return () => {
       document.querySelector("#product-jsonld")?.remove();
+      // Restaurar canonical al salir
+      document.querySelector('link[rel="canonical"]')?.setAttribute("href", storeUrl);
     };
-  }, [product]);
+  }, [product, price, inStock, allImages]);
 
   const handleWhatsAppClick = () => {
     // Google Ads conversion tracking

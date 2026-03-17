@@ -146,32 +146,46 @@ async function generateSeoContent(
   const suggestedWebPrice = Math.round(basePrice * 1.30 + 15000);
   const rawDescription = (description || "").substring(0, 1200);
 
-  const systemPrompt = `Eres un experto en SEO y e-commerce colombiano especializado en tiendas de pago contra entrega.
-Tu objetivo es crear contenido ALTAMENTE OPTIMIZADO para posicionamiento en Google.
-Responde ÚNICAMENTE con JSON válido. NO uses markdown. NO agregues texto fuera del JSON.
-El campo web_description DEBE ser HTML completo con etiquetas h2, h3, p, ul, li, strong, em.
-Mínimo 500 palabras en web_description.`;
+  const systemPrompt = `Eres un experto en SEO, Google Shopping y e-commerce colombiano especializado en tiendas de pago contra entrega.
+Tu objetivo es crear contenido ALTAMENTE OPTIMIZADO para:
+1. Posicionamiento orgánico en Google (SEO on-page)
+2. Google Shopping (Product Listing Ads)
+3. Rich Results / Resultados Enriquecidos de Google
+4. Conversión de ventas en Colombia
 
-  const userPrompt = `Crea contenido SEO completo para este producto de tienda online colombiana:
+Reglas OBLIGATORIAS:
+- Responde ÚNICAMENTE con JSON válido. NO uses markdown. NO agregues texto fuera del JSON.
+- web_description DEBE ser HTML semántico completo con h2, h3, p, ul, li, strong, em. MÍNIMO 600 palabras.
+- Usa palabras clave naturales relacionadas con el producto y Colombia.
+- NO inventes especificaciones técnicas que no estén en la descripción original.
+- Los tags deben ser términos de búsqueda reales que la gente usa en Google Colombia.
+- web_meta_title: máx 60 caracteres, incluye la palabra clave principal.
+- web_meta_description: máx 155 caracteres, incluye llamada a la acción y "Colombia".
+- web_short_description: máx 160 caracteres, orientado a conversión.`;  
+
+  const userPrompt = `Crea contenido SEO completo para este producto de tienda online colombiana con pago contra entrega:
 
 PRODUCTO:
 - Nombre: "${title}"
 - Precio proveedor: ${basePrice} COP
+- Precio sugerido de venta: ${suggestedWebPrice} COP
 - Categoría: "${category || "General"}"
-- Descripción original: "${rawDescription}"
+- Descripción original de Dropi: "${rawDescription}"
 
-GENERA exactamente este JSON con todos los campos completos:
+GENERA exactamente este JSON (todos los campos son OBLIGATORIOS):
 
 {
-  "web_title": "[Título SEO máx 70 chars, incluye nombre del producto y Colombia]",
-  "web_short_description": "[Resumen 150 chars con palabras clave. Termina con: ✅ Pago al recibir | 🚚 Envío a todo Colombia]",
-  "web_description": "[HTML COMPLETO con: <h2>Descripción del PRODUCTO</h2>, <p>intro de 3-4 oraciones con palabras clave</p>, <h3>Características Principales</h3>, <ul><li><strong>Característica:</strong> detalle</li></ul> mínimo 6 items, <h3>¿Por qué comprar en Pago Contra Entrega?</h3><p>texto sobre confianza y pago al recibir</p>, <h3>Envío y Pago</h3><p>Realizamos envíos a todo Colombia. El producto llega en 3-7 días hábiles y pagas únicamente cuando lo recibes en tu puerta.</p>, <h3>Preguntas Frecuentes</h3><p><strong>¿Cuánto tarda el envío?</strong> Entre 3 y 7 días hábiles.</p><p><strong>¿Cómo pago?</strong> Pagas en efectivo al mensajero cuando recibas tu pedido.</p><p><strong>¿Qué pasa si no me gusta?</strong> Tienes garantía de satisfacción.</p><p><em>Compra ahora con total confianza. 🛡️ Garantía incluida.</em></p>]",
-  "web_meta_title": "[Meta title máx 60 chars para Google]",
-  "web_meta_description": "[Meta description máx 155 chars, menciona pago contra entrega y Colombia]",
+  "web_title": "[Nombre del producto + Colombia, máx 70 chars. Ej: 'Mini Compresor Portátil para Auto Colombia']",
+  "web_short_description": "[160 chars máx. Beneficio principal + palabras clave + '✅ Pago al recibir | 🚚 Envío a todo Colombia'. Ej: 'Compresor portátil para inflar neumáticos y balones. Compacto, ligero y eficiente. ✅ Pago al recibir | 🚚 Envío a todo Colombia']",
+  "web_description": "[HTML COMPLETO mínimo 600 palabras con esta estructura EXACTA:\n<h2>Descripción del [NOMBRE PRODUCTO]</h2>\n<p>[Párrafo introductorio de 4-5 oraciones con palabras clave del producto, beneficios principales y mención de Colombia. Incluye el nombre del producto varias veces de forma natural.]</p>\n<p>[Segundo párrafo explicando casos de uso, para quién es ideal, qué problema resuelve.]</p>\n<p>[Tercer párrafo sobre calidad, materiales o tecnología del producto.]</p>\n<h3>Características Principales</h3>\n<ul>\n<li><strong>[Característica 1]:</strong> [Descripción detallada]</li>\n<li><strong>[Característica 2]:</strong> [Descripción detallada]</li>\n<li><strong>[Característica 3]:</strong> [Descripción detallada]</li>\n<li><strong>[Característica 4]:</strong> [Descripción detallada]</li>\n<li><strong>[Característica 5]:</strong> [Descripción detallada]</li>\n<li><strong>[Característica 6]:</strong> [Descripción detallada]</li>\n</ul>\n<h3>Beneficios de Comprar en Pago Contra Entrega</h3>\n<p>[Párrafo sobre la ventaja del pago contra entrega en Colombia: seguridad, confianza, sin tarjeta de crédito, paga cuando recibes.]</p>\n<h3>¿Para Quién es Ideal Este Producto?</h3>\n<p>[Párrafo describiendo el perfil del comprador ideal y situaciones de uso en Colombia.]</p>\n<h3>Envío y Forma de Pago</h3>\n<p>Realizamos envíos a todo Colombia: Bogotá, Medellín, Cali, Barranquilla, Cartagena y todas las ciudades y municipios del país. El producto llega en <strong>3 a 7 días hábiles</strong> directamente a la puerta de tu casa. <strong>Pagas únicamente cuando recibes tu pedido</strong>, en efectivo al mensajero. Sin tarjeta de crédito, sin pagos anticipados, sin riesgos.</p>\n<h3>Preguntas Frecuentes</h3>\n<p><strong>¿Cuánto tarda el envío?</strong> Entre 3 y 7 días hábiles a cualquier ciudad de Colombia.</p>\n<p><strong>¿Cómo pago?</strong> Pagas en efectivo al mensajero cuando recibas tu pedido en la puerta de tu casa.</p>\n<p><strong>¿El producto tiene garantía?</strong> Sí, todos nuestros productos tienen garantía de satisfacción.</p>\n<p><strong>¿Puedo devolver el producto?</strong> Si el producto llega defectuoso o no es lo que pediste, gestionamos el cambio o devolución.</p>\n<p><strong>¿Hacen envíos a municipios pequeños?</strong> Sí, llegamos a más de 1.000 municipios en todo Colombia.</p>\n<p><em>Compra ahora con total confianza. 🛡️ Garantía incluida. Pago seguro contra entrega.</em></p>]",
+  "web_meta_title": "[Máx 60 chars. Incluye palabra clave principal + Colombia. Ej: 'Compresor Portátil Auto Colombia | Pago Contraentrega']",
+  "web_meta_description": "[Máx 155 chars. Incluye beneficio principal + CTA + Colombia. Ej: 'Compresor portátil para auto e inflar neumáticos. Envío a todo Colombia. ✅ Paga solo cuando lo recibas. Compra segura.']",
   "web_price": ${suggestedWebPrice},
   "web_category": "${category || "General"}",
-  "web_tags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6", "tag7", "tag8"]
-}`;
+  "web_tags": ["[término búsqueda 1]", "[término búsqueda 2]", "[término búsqueda 3]", "[término búsqueda 4]", "[término búsqueda 5]", "[término búsqueda 6]", "[término búsqueda 7]", "[término búsqueda 8]", "[término búsqueda 9]", "[término búsqueda 10]"]
+}
+
+IMPORTANTE: Los tags deben ser términos de búsqueda reales en Google Colombia relacionados con el producto. Ej para compresor: ["compresor portatil para carro", "inflador de llantas", "bomba de aire portatil", "compresor de aire colombia", "inflador electrico", "compresor mini auto", "pago contra entrega colombia", "inflador de neumaticos", "compresor de llantas", "bomba de aire para bicicleta"]`;
 
   try {
     console.log(`[Extension API] Generando SEO con LLM para: "${title}"`);
