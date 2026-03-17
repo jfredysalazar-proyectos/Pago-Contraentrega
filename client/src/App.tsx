@@ -28,6 +28,7 @@ function Router() {
       <Route path="/admin/pedidos" component={Admin} />
       <Route path="/admin/configuracion" component={Admin} />
       <Route path="/admin/whatsapp" component={Admin} />
+      <Route path="/admin/extension" component={Admin} />
       <Route path="/politica-de-privacidad" component={SitePage} />
       <Route path="/terminos-y-condiciones" component={SitePage} />
       <Route path="/politica-de-cookies" component={SitePage} />
