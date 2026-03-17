@@ -6,7 +6,8 @@ import {
   Package, ShoppingCart, Settings, RefreshCw, Eye, EyeOff,
   Star, TrendingUp, CheckCircle, AlertCircle, Clock, BarChart3,
   Zap, Save, ExternalLink, Activity, Lock, User,
-  FileText, Plus, Edit, Trash2, Search, X, MessageCircle
+  FileText, Plus, Edit, Trash2, Search, X, MessageCircle,
+  Puzzle, Copy, Shield, Globe2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -716,6 +717,152 @@ function SettingsSection() {
   );
 }
 
+// ─── Extension Chrome ────────────────────────────────────────────────────────
+function ExtensionSection() {
+  const utils = trpc.useUtils();
+  const { data: allSettings } = trpc.settings.getAll.useQuery();
+  const [tokenInput, setTokenInput] = useState("");
+  const [statusResult, setStatusResult] = useState<any>(null);
+  const [testingStatus, setTestingStatus] = useState(false);
+  const updateSetting = trpc.settings.update.useMutation({
+    onSuccess: () => { utils.settings.getAll.invalidate(); toast.success("Token guardado correctamente"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const currentToken = allSettings?.find((s) => s.key === "extension_api_token")?.value || "";
+  const siteUrl = "https://pago-contraentrega-production.up.railway.app";
+
+  const testConnection = async () => {
+    setTestingStatus(true);
+    try {
+      const res = await fetch(`${siteUrl}/api/extension/status`);
+      const data = await res.json();
+      setStatusResult(data);
+    } catch (e: any) {
+      setStatusResult({ success: false, error: e.message });
+    } finally {
+      setTestingStatus(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => toast.success("Copiado al portapapeles"));
+  };
+
+  return (
+    <div className="p-6">
+      <PageHeader title="Extensión Chrome" subtitle="Configura la integración con MarketAutoPublisher para importar productos desde Dropi" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Configuración del Token */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Shield className="w-4 h-4 text-amber-600" /> Token de Seguridad
+          </h3>
+          <div className="space-y-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-xs text-amber-700">
+                El token de seguridad protege tu API de accesos no autorizados. Configúralo aquí y luego ingrésalo en la extensión Chrome.
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Token Actual</label>
+              {currentToken ? (
+                <div className="flex items-center gap-2">
+                  <Input type="password" value={currentToken} readOnly className="font-mono text-xs" />
+                  <Button size="sm" variant="outline" onClick={() => copyToClipboard(currentToken)}>
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 italic">Sin token configurado (acceso abierto)</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nuevo Token</label>
+              <Input
+                type="text"
+                placeholder="Ej: mi-token-secreto-2026"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+              />
+              <p className="text-xs text-gray-400 mt-1">Usa letras, números y guiones. Mínimo 8 caracteres.</p>
+            </div>
+            <Button
+              onClick={() => updateSetting.mutate({ key: "extension_api_token", value: tokenInput })}
+              disabled={!tokenInput || tokenInput.length < 8 || updateSetting.isPending}
+              className="w-full bg-amber-600 hover:bg-amber-700"
+            >
+              <Save className="w-4 h-4 mr-2" /> Guardar Token
+            </Button>
+          </div>
+        </div>
+
+        {/* Estado de la conexión */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Activity className="w-4 h-4 text-amber-600" /> Estado de la Conexión
+          </h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">URL del Endpoint</label>
+              <div className="flex items-center gap-2">
+                <Input value={`${siteUrl}/api/extension/import-product`} readOnly className="font-mono text-xs" />
+                <Button size="sm" variant="outline" onClick={() => copyToClipboard(`${siteUrl}/api/extension/import-product`)}>
+                  <Copy className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+            <Button onClick={testConnection} disabled={testingStatus} variant="outline" className="w-full">
+              <Globe2 className={`w-4 h-4 mr-2 ${testingStatus ? "animate-spin" : ""}`} />
+              {testingStatus ? "Verificando..." : "Verificar Conexión"}
+            </Button>
+            {statusResult && (
+              <div className={`rounded-lg p-3 text-sm ${statusResult.success ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"}`}>
+                {statusResult.success ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-green-700 font-medium">
+                      <CheckCircle className="w-4 h-4" /> Conexión exitosa
+                    </div>
+                    <p className="text-green-600 text-xs">Tienda: {statusResult.storeName}</p>
+                    <p className="text-green-600 text-xs">Token: {statusResult.tokenConfigured ? "Configurado" : "Sin configurar"}</p>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-red-700">
+                    <AlertCircle className="w-4 h-4" /> Error: {statusResult.error}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Instrucciones */}
+      <div className="mt-6 bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Puzzle className="w-4 h-4 text-amber-600" /> Cómo Usar la Extensión
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="w-8 h-8 rounded-full bg-amber-600 text-white flex items-center justify-center text-sm font-bold mb-3">1</div>
+            <h4 className="font-medium text-gray-900 mb-1">Instala la Extensión</h4>
+            <p className="text-sm text-gray-500">Instala la extensión MarketAutoPublisher v4.4 (modificada) en Chrome desde el modo desarrollador.</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="w-8 h-8 rounded-full bg-amber-600 text-white flex items-center justify-center text-sm font-bold mb-3">2</div>
+            <h4 className="font-medium text-gray-900 mb-1">Configura el Token</h4>
+            <p className="text-sm text-gray-500">En la extensión, ve a la pestaña "Mi Web" e ingresa la URL de tu sitio y el token de seguridad configurado aquí.</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="w-8 h-8 rounded-full bg-amber-600 text-white flex items-center justify-center text-sm font-bold mb-3">3</div>
+            <h4 className="font-medium text-gray-900 mb-1">Importa Productos</h4>
+            <p className="text-sm text-gray-500">En Dropi, selecciona los productos que quieres importar y haz clic en "Publicar en Mi Web". Los productos aparecerán automáticamente en tu tienda.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── WhatsApp ─────────────────────────────────────────────────────────────────
 function WhatsAppSection() {
   const { data: conversations } = trpc.whatsapp.conversations.useQuery({ limit: 20 });
@@ -776,6 +923,7 @@ export default function Admin() {
     if (location === "/admin/pedidos") return <OrdersSection />;
     if (location === "/admin/configuracion") return <SettingsSection />;
     if (location === "/admin/whatsapp") return <WhatsAppSection />;
+    if (location === "/admin/extension") return <ExtensionSection />;
     return <DashboardSection />;
   };
 

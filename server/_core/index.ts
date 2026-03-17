@@ -9,6 +9,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import feedRouter from "../feeds";
 import whatsappRouter from "../whatsapp";
+import extensionRouter from "../extension";
 import { getDb } from "../db";
 import { sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -129,6 +130,8 @@ async function startServer() {
   app.use("/api", feedRouter);
   app.use("/sitemap.xml", feedRouter);
   app.use("/robots.txt", feedRouter);
+  // Extension Chrome API (before tRPC)
+  app.use("/api/extension", extensionRouter);
   // WhatsApp webhook & tracking
   app.use("/", whatsappRouter);
 

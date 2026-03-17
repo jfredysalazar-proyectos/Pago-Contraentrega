@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Package, Tag, ShoppingCart,
   Settings, FileText, LogOut, Menu, X, ChevronRight,
-  Globe, MessageCircle, RefreshCw
+  Globe, MessageCircle, RefreshCw, Puzzle
 } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -24,6 +24,7 @@ const menuGroups = [
       { icon: Package, label: "Productos", path: "/admin/productos" },
       { icon: Tag, label: "Categorías", path: "/admin/categorias" },
       { icon: RefreshCw, label: "Sincronizar Dropi", path: "/admin/sync" },
+      { icon: Puzzle, label: "Extensión Chrome", path: "/admin/extension" },
     ],
   },
   {
