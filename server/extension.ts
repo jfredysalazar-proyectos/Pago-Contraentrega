@@ -184,6 +184,9 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
       dropiId,
       name,
       description,
+      shortDescription,
+      metaTitle,
+      metaDescription,
       price,
       comparePrice,
       images,
@@ -194,6 +197,7 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
       providerPrice,
       suggestedPrice,
       slug: incomingSlug,
+      aiGenerated,
     } = req.body;
 
     // Validaciones básicas
@@ -269,6 +273,9 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
       slug: finalSlug,
       name: name.trim(),
       description: description ? String(description) : null,
+      shortDescription: shortDescription ? String(shortDescription) : null,
+      metaTitle: metaTitle ? String(metaTitle) : null,
+      metaDescription: metaDescription ? String(metaDescription) : null,
       price: finalPrice,
       comparePrice: finalComparePrice,
       sku: sku ? String(sku) : null,
@@ -309,15 +316,17 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
 
     const productUrl = `https://pago-contraentrega-production.up.railway.app/producto/${finalSlug}`;
 
+    const aiMsg = aiGenerated ? " ✨ Descripción SEO generada con IA" : "";
     res.json({
       success: true,
       action,
       productId,
       slug: finalSlug,
       productUrl,
+      aiGenerated: !!aiGenerated,
       message: action === "created"
-        ? `Producto "${name.trim()}" importado exitosamente.`
-        : `Producto "${name.trim()}" actualizado exitosamente.`,
+        ? `Producto "${name.trim()}" importado exitosamente.${aiMsg}`
+        : `Producto "${name.trim()}" actualizado exitosamente.${aiMsg}`,
     });
   } catch (error: any) {
     console.error("[Extension API] Error importando producto:", error);
