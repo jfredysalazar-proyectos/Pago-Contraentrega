@@ -13,9 +13,10 @@
  */
 
 import { Router, Request, Response } from "express";
-import { getDb } from "./db";
-import { products, settings, categories } from "../drizzle/schema";
+import { getDb, getUserByUsername } from "./db";
+import { products, settings, categories, users } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 /**
  * Llama a Groq usando la API Key guardada en la BD del sitio.
  * Si no hay clave de Groq en BD, intenta con variables de entorno como fallback.
@@ -692,11 +693,10 @@ extensionRouter.post("/set-groq-key", async (req: Request, res: Response) => {
     if (adminPassword) {
       const adminUser = await db
         .select()
-        .from(require("../drizzle/schema").users)
-        .where(eq(require("../drizzle/schema").users.username, "admin"))
+        .from(users)
+        .where(eq(users.username, "admin"))
         .limit(1);
       if (adminUser[0]) {
-        const bcrypt = require("bcryptjs");
         isValidAdmin = await bcrypt.compare(adminPassword, adminUser[0].passwordHash);
       }
     }
