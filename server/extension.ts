@@ -143,7 +143,11 @@ async function generateSeoContent(
   groqApiKey: string
 ): Promise<SeoContent | null> {
   const basePrice = providerPrice || suggestedPrice || 0;
-  const suggestedWebPrice = Math.round(basePrice * 1.30 + 15000);
+  // Fórmula de precio: (PrecioProveedor + $23.000 flete+comisión) / 0.85, redondeado al millar superior
+  // Ejemplo: (60.000 + 23.000) / 0.85 = 97.647 → redondea a 98.000
+  const suggestedWebPrice = basePrice > 0
+    ? Math.ceil((basePrice + 23000) / 0.85 / 1000) * 1000
+    : 0;
   const rawDescription = (description || "").substring(0, 1200);
 
   const systemPrompt = `Eres un experto en SEO, Google Shopping y e-commerce colombiano especializado en tiendas de pago contra entrega.
