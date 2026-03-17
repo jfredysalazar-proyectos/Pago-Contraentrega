@@ -4,6 +4,11 @@
  * Endpoint REST dedicado para recibir productos desde la extensión Chrome
  * MarketAutoPublisher y guardarlos directamente en la base de datos.
  *
+ * Cuando el campo `generateSEO: true` viene en el payload, el servidor
+ * genera automáticamente título SEO, descripción HTML larga, shortDescription,
+ * metaTitle, metaDescription y tags usando el LLM del backend (sin necesidad
+ * de API Key del usuario).
+ *
  * Ruta base: /api/extension
  */
 
@@ -11,6 +16,7 @@ import { Router, Request, Response } from "express";
 import { getDb } from "./db";
 import { products, settings, categories } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { invokeLLM } from "./_core/llm";
 
 const extensionRouter = Router();
 
@@ -41,7 +47,6 @@ async function getSetting(key: string): Promise<string | null> {
 /**
  * Asegura que una categoría exista en la tabla categories.
  * Si no existe, la crea automáticamente.
- * Retorna el nombre normalizado de la categoría.
  */
 async function ensureCategory(categoryName: string): Promise<string> {
   if (!categoryName || !categoryName.trim()) return categoryName;
@@ -67,7 +72,6 @@ async function ensureCategory(categoryName: string): Promise<string> {
       .limit(1);
 
     if (existing.length === 0) {
-      // Crear la categoría automáticamente
       await db.insert(categories).values({
         name,
         slug: catSlug,
@@ -77,7 +81,6 @@ async function ensureCategory(categoryName: string): Promise<string> {
       console.log(`[Extension API] Categoría creada automáticamente: "${name}" (slug: ${catSlug})`);
     }
   } catch (err: any) {
-    // Si ya existe por race condition, ignorar
     if (!err.message?.includes("Duplicate")) {
       console.warn(`[Extension API] No se pudo crear categoría "${name}":`, err.message);
     }
@@ -86,10 +89,101 @@ async function ensureCategory(categoryName: string): Promise<string> {
   return name;
 }
 
+// ─── Generación de contenido SEO con LLM ──────────────────────────────────────
+
+interface SeoContent {
+  web_title: string;
+  web_short_description: string;
+  web_description: string;
+  web_meta_title: string;
+  web_meta_description: string;
+  web_price: number;
+  web_category: string;
+  web_tags: string[];
+}
+
+async function generateSeoContent(
+  title: string,
+  description: string,
+  category: string,
+  providerPrice: number,
+  suggestedPrice: number
+): Promise<SeoContent | null> {
+  const basePrice = providerPrice || suggestedPrice || 0;
+  const suggestedWebPrice = Math.round(basePrice * 1.30 + 15000);
+  const rawDescription = (description || "").substring(0, 1200);
+
+  const systemPrompt = `Eres un experto en SEO y e-commerce colombiano especializado en tiendas de pago contra entrega.
+Tu objetivo es crear contenido ALTAMENTE OPTIMIZADO para posicionamiento en Google.
+Responde ÚNICAMENTE con JSON válido. NO uses markdown. NO agregues texto fuera del JSON.
+El campo web_description DEBE ser HTML completo con etiquetas h2, h3, p, ul, li, strong, em.
+Mínimo 500 palabras en web_description.`;
+
+  const userPrompt = `Crea contenido SEO completo para este producto de tienda online colombiana:
+
+PRODUCTO:
+- Nombre: "${title}"
+- Precio proveedor: ${basePrice} COP
+- Categoría: "${category || "General"}"
+- Descripción original: "${rawDescription}"
+
+GENERA exactamente este JSON con todos los campos completos:
+
+{
+  "web_title": "[Título SEO máx 70 chars, incluye nombre del producto y Colombia]",
+  "web_short_description": "[Resumen 150 chars con palabras clave. Termina con: ✅ Pago al recibir | 🚚 Envío a todo Colombia]",
+  "web_description": "[HTML COMPLETO con: <h2>Descripción del PRODUCTO</h2>, <p>intro de 3-4 oraciones con palabras clave</p>, <h3>Características Principales</h3>, <ul><li><strong>Característica:</strong> detalle</li></ul> mínimo 6 items, <h3>¿Por qué comprar en Pago Contra Entrega?</h3><p>texto sobre confianza y pago al recibir</p>, <h3>Envío y Pago</h3><p>Realizamos envíos a todo Colombia. El producto llega en 3-7 días hábiles y pagas únicamente cuando lo recibes en tu puerta.</p>, <h3>Preguntas Frecuentes</h3><p><strong>¿Cuánto tarda el envío?</strong> Entre 3 y 7 días hábiles.</p><p><strong>¿Cómo pago?</strong> Pagas en efectivo al mensajero cuando recibas tu pedido.</p><p><strong>¿Qué pasa si no me gusta?</strong> Tienes garantía de satisfacción.</p><p><em>Compra ahora con total confianza. 🛡️ Garantía incluida.</em></p>]",
+  "web_meta_title": "[Meta title máx 60 chars para Google]",
+  "web_meta_description": "[Meta description máx 155 chars, menciona pago contra entrega y Colombia]",
+  "web_price": ${suggestedWebPrice},
+  "web_category": "${category || "General"}",
+  "web_tags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6", "tag7", "tag8"]
+}`;
+
+  try {
+    console.log(`[Extension API] Generando SEO con LLM para: "${title}"`);
+
+    const result = await invokeLLM({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      responseFormat: { type: "json_object" },
+      maxTokens: 4096,
+    });
+
+    const content = result.choices?.[0]?.message?.content;
+    if (!content || typeof content !== "string") {
+      console.warn("[Extension API] LLM retornó respuesta vacía");
+      return null;
+    }
+
+    let parsed: SeoContent;
+    try {
+      parsed = JSON.parse(content);
+    } catch (e) {
+      const clean = content.replace(/```json/g, "").replace(/```/g, "").trim();
+      parsed = JSON.parse(clean);
+    }
+
+    // Asegurar precio como número
+    if (parsed.web_price !== undefined) {
+      const priceStr = String(parsed.web_price).replace(/[^0-9]/g, "");
+      parsed.web_price = parseInt(priceStr) || suggestedWebPrice;
+    }
+
+    console.log(`[Extension API] ✅ SEO generado: título="${parsed.web_title}", desc=${parsed.web_description?.length || 0} chars`);
+    return parsed;
+
+  } catch (error: any) {
+    console.error("[Extension API] Error generando SEO con LLM:", error.message);
+    return null;
+  }
+}
+
 // ─── CORS para la extensión Chrome ────────────────────────────────────────────
 
 extensionRouter.use((req: Request, res: Response, next: Function) => {
-  // Permitir solicitudes desde la extensión Chrome (chrome-extension://) y desde el propio dominio
   const origin = req.headers.origin || "";
   const isExtension = origin.startsWith("chrome-extension://") || origin === "";
   const isSameOrigin = origin.includes("pago-contraentrega");
@@ -112,7 +206,6 @@ extensionRouter.use((req: Request, res: Response, next: Function) => {
 // ─── Validación de token de extensión ─────────────────────────────────────────
 
 async function validateExtensionToken(req: Request): Promise<boolean> {
-  // Método 1: Token de extensión en el header X-Extension-Token
   const headerToken = req.headers["x-extension-token"] as string;
   if (headerToken) {
     const storedToken = await getSetting("extension_api_token");
@@ -121,17 +214,15 @@ async function validateExtensionToken(req: Request): Promise<boolean> {
     }
   }
 
-  // Método 2: Si no hay token configurado, permitir (modo desarrollo/configuración inicial)
   const storedToken = await getSetting("extension_api_token");
   if (!storedToken) {
-    return true; // Sin token configurado, permitir acceso (el admin debe configurarlo)
+    return true; // Sin token configurado, permitir (modo inicial)
   }
 
   return false;
 }
 
 // ─── GET /api/extension/status ────────────────────────────────────────────────
-// Verificar que el endpoint está activo y retornar info de configuración
 
 extensionRouter.get("/status", async (req: Request, res: Response) => {
   try {
@@ -149,8 +240,9 @@ extensionRouter.get("/status", async (req: Request, res: Response) => {
       status: "online",
       storeName,
       tokenConfigured,
+      seoEnabled: true,
       message: tokenConfigured
-        ? "Extensión conectada correctamente. Token configurado."
+        ? "Extensión conectada correctamente. Token configurado. ✨ SEO con IA disponible."
         : "Extensión conectada. Configura un token en el panel de administración para mayor seguridad.",
     });
   } catch (error: any) {
@@ -159,11 +251,11 @@ extensionRouter.get("/status", async (req: Request, res: Response) => {
 });
 
 // ─── POST /api/extension/import-product ───────────────────────────────────────
-// Importar un producto desde la extensión Chrome
+// Importar un producto desde la extensión Chrome.
+// Si `generateSEO: true` viene en el payload, el servidor genera el contenido SEO.
 
 extensionRouter.post("/import-product", async (req: Request, res: Response) => {
   try {
-    // Validar token de extensión
     const isValid = await validateExtensionToken(req);
     if (!isValid) {
       res.status(401).json({
@@ -179,7 +271,6 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
       return;
     }
 
-    // Extraer y validar campos del payload
     const {
       dropiId,
       name,
@@ -197,6 +288,7 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
       providerPrice,
       suggestedPrice,
       slug: incomingSlug,
+      generateSEO,   // ← nuevo campo: si true, el servidor genera el SEO
       aiGenerated,
     } = req.body;
 
@@ -210,25 +302,59 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
       return;
     }
 
-    // Calcular precio final
-    // Prioridad: price > suggestedPrice > providerPrice + margen
+    // Calcular precio base
     let finalPrice: string;
     if (price && Number(price) > 0) {
       finalPrice = String(Math.round(Number(price)));
     } else if (suggestedPrice && Number(suggestedPrice) > 0) {
       finalPrice = String(Math.round(Number(suggestedPrice)));
     } else if (providerPrice && Number(providerPrice) > 0) {
-      // Margen por defecto: precio proveedor + 30.000 COP
       finalPrice = String(Math.round(Number(providerPrice) + 30000));
     } else {
       res.status(400).json({ success: false, error: "Se requiere al menos un precio (price, suggestedPrice o providerPrice)." });
       return;
     }
 
-    // Calcular comparePrice (precio tachado)
     let finalComparePrice: string | null = null;
     if (comparePrice && Number(comparePrice) > 0) {
       finalComparePrice = String(Math.round(Number(comparePrice)));
+    }
+
+    // ─── Generación SEO en el servidor ────────────────────────────────────────
+    let finalName = name.trim();
+    let finalDescription = description ? String(description) : null;
+    let finalShortDescription = shortDescription ? String(shortDescription) : null;
+    let finalMetaTitle = metaTitle ? String(metaTitle) : null;
+    let finalMetaDescription = metaDescription ? String(metaDescription) : null;
+    let finalCategory = category ? String(category) : null;
+    let finalTags: string[] = Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string") : [];
+    let seoGenerated = false;
+
+    if (generateSEO) {
+      const seoContent = await generateSeoContent(
+        name.trim(),
+        description || "",
+        category || "General",
+        Number(providerPrice) || 0,
+        Number(suggestedPrice) || 0
+      );
+
+      if (seoContent) {
+        if (seoContent.web_title?.trim()) finalName = seoContent.web_title.trim();
+        if (seoContent.web_description?.trim()) finalDescription = seoContent.web_description.trim();
+        if (seoContent.web_short_description?.trim()) finalShortDescription = seoContent.web_short_description.trim();
+        if (seoContent.web_meta_title?.trim()) finalMetaTitle = seoContent.web_meta_title.trim();
+        if (seoContent.web_meta_description?.trim()) finalMetaDescription = seoContent.web_meta_description.trim();
+        if (seoContent.web_price > 0) finalPrice = String(seoContent.web_price);
+        if (seoContent.web_category?.trim()) finalCategory = seoContent.web_category.trim();
+        if (Array.isArray(seoContent.web_tags) && seoContent.web_tags.length > 0) finalTags = seoContent.web_tags;
+        seoGenerated = true;
+      }
+    }
+
+    // Asegurar categoría en BD
+    if (finalCategory) {
+      finalCategory = await ensureCategory(finalCategory);
     }
 
     // Generar slug único
@@ -236,7 +362,6 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
     let finalSlug = baseSlug;
     let slugSuffix = 0;
 
-    // Verificar si el slug ya existe (para otro producto diferente)
     while (true) {
       const existing = await db
         .select({ id: products.id, dropiId: products.dropiId })
@@ -244,10 +369,9 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
         .where(eq(products.slug, finalSlug))
         .limit(1);
 
-      if (existing.length === 0) break; // Slug disponible
-      if (existing[0].dropiId === String(dropiId)) break; // Es el mismo producto, OK
+      if (existing.length === 0) break;
+      if (existing[0].dropiId === String(dropiId)) break;
 
-      // Slug ocupado por otro producto, incrementar sufijo
       slugSuffix++;
       finalSlug = makeUniqueSlug(baseSlug, slugSuffix);
     }
@@ -259,23 +383,15 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
 
     const mainImage = imageArray[0] ?? null;
 
-    // Preparar tags
-    const tagsArray: string[] = Array.isArray(tags)
-      ? tags.filter((t: any) => typeof t === "string")
-      : [];
-
-    // Asegurar que la categoría exista en la BD (creación automática)
-    const finalCategory = category ? await ensureCategory(String(category)) : null;
-
     // Datos del producto a guardar
     const productData = {
       dropiId: String(dropiId),
       slug: finalSlug,
-      name: name.trim(),
-      description: description ? String(description) : null,
-      shortDescription: shortDescription ? String(shortDescription) : null,
-      metaTitle: metaTitle ? String(metaTitle) : null,
-      metaDescription: metaDescription ? String(metaDescription) : null,
+      name: finalName,
+      description: finalDescription,
+      shortDescription: finalShortDescription,
+      metaTitle: finalMetaTitle,
+      metaDescription: finalMetaDescription,
       price: finalPrice,
       comparePrice: finalComparePrice,
       sku: sku ? String(sku) : null,
@@ -283,7 +399,7 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
       mainImage,
       images: imageArray.length > 0 ? imageArray : null,
       stock: stock ? Number(stock) : null,
-      tags: tagsArray.length > 0 ? tagsArray : null,
+      tags: finalTags.length > 0 ? finalTags : null,
       isActive: true,
       lastSyncedAt: new Date(),
     };
@@ -299,7 +415,6 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
     let action: "created" | "updated";
 
     if (existingByDropiId.length > 0) {
-      // Actualizar producto existente
       await db
         .update(products)
         .set(productData)
@@ -308,22 +423,21 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
       productId = existingByDropiId[0].id;
       action = "updated";
     } else {
-      // Crear nuevo producto
       const [result] = await db.insert(products).values(productData);
       productId = (result as any).insertId;
       action = "created";
     }
 
     const productUrl = `https://pago-contraentrega-production.up.railway.app/producto/${finalSlug}`;
+    const aiMsg = seoGenerated ? " ✨ Descripción SEO generada con IA" : "";
 
-    const aiMsg = aiGenerated ? " ✨ Descripción SEO generada con IA" : "";
     res.json({
       success: true,
       action,
       productId,
       slug: finalSlug,
       productUrl,
-      aiGenerated: !!aiGenerated,
+      aiGenerated: seoGenerated || !!aiGenerated,
       message: action === "created"
         ? `Producto "${name.trim()}" importado exitosamente.${aiMsg}`
         : `Producto "${name.trim()}" actualizado exitosamente.${aiMsg}`,
@@ -338,7 +452,6 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
 });
 
 // ─── POST /api/extension/import-batch ─────────────────────────────────────────
-// Importar múltiples productos en lote desde la extensión
 
 extensionRouter.post("/import-batch", async (req: Request, res: Response) => {
   try {
@@ -354,7 +467,7 @@ extensionRouter.post("/import-batch", async (req: Request, res: Response) => {
       return;
     }
 
-    const { products: productList } = req.body;
+    const { products: productList, generateSEO } = req.body;
 
     if (!Array.isArray(productList) || productList.length === 0) {
       res.status(400).json({ success: false, error: "Se requiere un array 'products' con al menos un producto." });
@@ -366,7 +479,7 @@ extensionRouter.post("/import-batch", async (req: Request, res: Response) => {
       return;
     }
 
-    const results: Array<{ dropiId: string; success: boolean; action?: string; error?: string; productUrl?: string }> = [];
+    const results: Array<{ dropiId: string; success: boolean; action?: string; error?: string; productUrl?: string; aiGenerated?: boolean }> = [];
 
     for (const item of productList) {
       try {
@@ -387,6 +500,45 @@ extensionRouter.post("/import-batch", async (req: Request, res: Response) => {
         } else {
           results.push({ dropiId: String(dropiId), success: false, error: "Sin precio válido" });
           continue;
+        }
+
+        let finalName = String(name).trim();
+        let finalDescription = description ? String(description) : null;
+        let finalShortDescription: string | null = null;
+        let finalMetaTitle: string | null = null;
+        let finalMetaDescription: string | null = null;
+        let finalCategory = category ? String(category) : null;
+        let finalTags: string[] = Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string") : [];
+        let seoGenerated = false;
+
+        // Generar SEO si se solicitó (con pausa para no saturar el LLM)
+        if (generateSEO) {
+          const seoContent = await generateSeoContent(
+            finalName,
+            description || "",
+            category || "General",
+            Number(providerPrice) || 0,
+            Number(suggestedPrice) || 0
+          );
+
+          if (seoContent) {
+            if (seoContent.web_title?.trim()) finalName = seoContent.web_title.trim();
+            if (seoContent.web_description?.trim()) finalDescription = seoContent.web_description.trim();
+            if (seoContent.web_short_description?.trim()) finalShortDescription = seoContent.web_short_description.trim();
+            if (seoContent.web_meta_title?.trim()) finalMetaTitle = seoContent.web_meta_title.trim();
+            if (seoContent.web_meta_description?.trim()) finalMetaDescription = seoContent.web_meta_description.trim();
+            if (seoContent.web_price > 0) finalPrice = String(seoContent.web_price);
+            if (seoContent.web_category?.trim()) finalCategory = seoContent.web_category.trim();
+            if (Array.isArray(seoContent.web_tags) && seoContent.web_tags.length > 0) finalTags = seoContent.web_tags;
+            seoGenerated = true;
+          }
+
+          // Pausa entre productos para no saturar el LLM
+          await new Promise(r => setTimeout(r, 1000));
+        }
+
+        if (finalCategory) {
+          finalCategory = await ensureCategory(finalCategory);
         }
 
         const baseSlug = slugify(String(name).trim());
@@ -413,15 +565,18 @@ extensionRouter.post("/import-batch", async (req: Request, res: Response) => {
         const productData = {
           dropiId: String(dropiId),
           slug: finalSlug,
-          name: String(name).trim(),
-          description: description ? String(description) : null,
+          name: finalName,
+          description: finalDescription,
+          shortDescription: finalShortDescription,
+          metaTitle: finalMetaTitle,
+          metaDescription: finalMetaDescription,
           price: finalPrice,
           sku: sku ? String(sku) : null,
-          category: category ? String(category) : null,
+          category: finalCategory,
           mainImage: imageArray[0] ?? null,
           images: imageArray.length > 0 ? imageArray : null,
           stock: stock ? Number(stock) : null,
-          tags: Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string") : null,
+          tags: finalTags.length > 0 ? finalTags : null,
           isActive: true,
           lastSyncedAt: new Date(),
         };
@@ -445,6 +600,7 @@ extensionRouter.post("/import-batch", async (req: Request, res: Response) => {
           dropiId: String(dropiId),
           success: true,
           action,
+          aiGenerated: seoGenerated,
           productUrl: `https://pago-contraentrega-production.up.railway.app/producto/${finalSlug}`,
         });
       } catch (err: any) {
@@ -455,10 +611,11 @@ extensionRouter.post("/import-batch", async (req: Request, res: Response) => {
     const created = results.filter((r) => r.action === "created").length;
     const updated = results.filter((r) => r.action === "updated").length;
     const failed = results.filter((r) => !r.success).length;
+    const seoCount = results.filter((r) => r.aiGenerated).length;
 
     res.json({
       success: true,
-      summary: { total: productList.length, created, updated, failed },
+      summary: { total: productList.length, created, updated, failed, seoGenerated: seoCount },
       results,
     });
   } catch (error: any) {
