@@ -10,6 +10,8 @@ import ProductDetail from "./pages/ProductDetail";
 import TrackOrder from "./pages/TrackOrder";
 import Admin from "./pages/Admin";
 import SitePage from "./pages/SitePage";
+import { CartProvider } from "./context/CartContext";
+import CartDrawer from "./components/CartDrawer";
 
 function Router() {
   return (
@@ -40,10 +42,13 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
-        <TooltipProvider>
-          <Toaster richColors position="top-right" />
-          <Router />
-        </TooltipProvider>
+        <CartProvider>
+          <TooltipProvider>
+            <Toaster richColors position="top-right" />
+            <Router />
+            <CartDrawer />
+          </TooltipProvider>
+        </CartProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

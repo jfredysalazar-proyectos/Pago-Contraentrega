@@ -4,8 +4,9 @@ import { trpc } from "@/lib/trpc";
 import {
   MessageCircle, ChevronRight, Star, Truck, ShieldCheck,
   CreditCard, Package, Share2, ChevronLeft, ChevronRight as ChevronRightIcon,
-  Tag, ArrowLeft
+  Tag, ArrowLeft, ShoppingCart, Check
 } from "lucide-react";
+import { useCart } from "@/context/CartContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -37,6 +38,24 @@ export default function ProductDetail() {
 
   const whatsappNumber = settingsData?.whatsapp_number ?? "";
   const messageTemplate = settingsData?.whatsapp_message_template ?? "";
+  const { addItem } = useCart();
+  const [addedToCart, setAddedToCart] = useState(false);
+
+  function handleAddToCart() {
+    if (!product) return;
+    addItem({
+      id: product.id,
+      slug: product.slug,
+      name: product.name,
+      price: parseFloat(String(product.price)),
+      comparePrice: product.comparePrice ? parseFloat(String(product.comparePrice)) : null,
+      mainImage: product.mainImage ?? null,
+      sku: product.sku ?? null,
+      brand: product.brand ?? null,
+    });
+    setAddedToCart(true);
+    setTimeout(() => setAddedToCart(false), 2000);
+  }
 
   const images = product?.images as string[] | null ?? [];
   const allImages = product?.mainImage
@@ -316,6 +335,27 @@ export default function ProductDetail() {
 
             {/* CTA */}
             <div className="flex flex-col gap-3 mb-8">
+              {/* Add to cart button */}
+              <button
+                onClick={handleAddToCart}
+                disabled={!inStock}
+                className={`flex items-center justify-center gap-3 py-4 rounded-xl text-base font-bold transition-all border-2 ${
+                  !inStock
+                    ? "opacity-50 cursor-not-allowed border-muted"
+                    : addedToCart
+                    ? "bg-green-50 border-green-500 text-green-700"
+                    : "hover:-translate-y-0.5 hover:shadow-md"
+                }`}
+                style={!inStock || addedToCart ? {} : { borderColor: "var(--brand-gold)", color: "var(--brand-gold)" }}
+                aria-label={`Agregar ${product.name} al carrito`}
+              >
+                {addedToCart ? (
+                  <><Check className="w-5 h-5" /> ¡Agregado al carrito!</>
+                ) : (
+                  <><ShoppingCart className="w-5 h-5" /> Agregar al Carrito</>
+                )}
+              </button>
+              {/* Direct WhatsApp button */}
               <a
                 href={waLink}
                 target="_blank"
@@ -328,7 +368,7 @@ export default function ProductDetail() {
                 aria-label={`Comprar ${product.name} por WhatsApp`}
               >
                 <MessageCircle className="w-5 h-5" />
-                {inStock ? "Comprar por WhatsApp" : "Sin Stock"}
+                {inStock ? "Comprar Ahora por WhatsApp" : "Sin Stock"}
               </a>
               <p className="text-center text-xs" style={{ color: "var(--muted-foreground)" }}>
                 Nuestro asistente te atenderá al instante y coordinará tu pedido

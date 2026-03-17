@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { ShoppingBag, Search, Menu, X, ChevronDown } from "lucide-react";
+import { ShoppingBag, Search, Menu, X, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useCart } from "@/context/CartContext";
 
 export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -10,6 +11,7 @@ export default function Navbar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [location, navigate] = useLocation();
+  const { totalItems, openCart } = useCart();
 
   useEffect(() => {
     const handler = () => setIsScrolled(window.scrollY > 20);
@@ -100,6 +102,25 @@ export default function Navbar() {
                 className="hidden md:flex"
               >
                 <Search className="w-4 h-4" />
+              </Button>
+
+              {/* Cart button */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={openCart}
+                className="relative"
+                aria-label={`Carrito (${totalItems} productos)`}
+              >
+                <ShoppingCart className="w-5 h-5" />
+                {totalItems > 0 && (
+                  <span
+                    className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-white text-xs font-bold flex items-center justify-center"
+                    style={{ background: "var(--brand-gold)" }}
+                  >
+                    {totalItems > 9 ? "9+" : totalItems}
+                  </span>
+                )}
               </Button>
 
               {/* Mobile menu button */}

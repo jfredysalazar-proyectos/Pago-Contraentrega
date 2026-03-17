@@ -67,11 +67,10 @@ export default function Footer() {
             <ul className="space-y-3">
               {[
                 { href: "/rastrear", label: "Rastrear mi Pedido" },
-                { href: "/como-comprar", label: "¿Cómo Comprar?" },
-                { href: "/politica-envios", label: "Política de Envíos" },
-                { href: "/politica-devoluciones", label: "Devoluciones" },
-                { href: "/terminos", label: "Términos y Condiciones" },
-                { href: "/privacidad", label: "Política de Privacidad" },
+                { href: "/terminos-y-condiciones", label: "Términos y Condiciones" },
+                { href: "/politica-de-privacidad", label: "Política de Privacidad" },
+                { href: "/politica-de-cookies", label: "Política de Cookies" },
+                { href: "/contacto", label: "Contacto" },
               ].map((item) => (
                 <li key={item.href}>
                   <Link
