@@ -16,33 +16,33 @@ import { Router, Request, Response } from "express";
 import { getDb } from "./db";
 import { products, settings, categories } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
-// LLM directo via fetch (usa OPENAI_API_KEY y OPENAI_BASE_URL disponibles en Railway)
-async function callLLM(messages: Array<{role: string; content: string}>, maxTokens = 4096): Promise<string | null> {
-  const apiKey = process.env.OPENAI_API_KEY || process.env.BUILT_IN_FORGE_API_KEY || "";
-  const baseUrl = (process.env.OPENAI_BASE_URL || process.env.BUILT_IN_FORGE_API_URL || "https://api.manus.im/api/llm-proxy/v1").replace(/\/$/, "");
-
-  if (!apiKey) {
-    console.error("[Extension API] No hay API key de LLM configurada (OPENAI_API_KEY o BUILT_IN_FORGE_API_KEY)");
-    return null;
-  }
-
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+/**
+ * Llama a Groq usando la API Key guardada en la BD del sitio.
+ * Si no hay clave de Groq en BD, intenta con variables de entorno como fallback.
+ */
+async function callGroqLLM(
+  messages: Array<{role: string; content: string}>,
+  groqApiKey: string,
+  maxTokens = 4096
+): Promise<string | null> {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
+      "Authorization": `Bearer ${groqApiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-4.1-mini",
+      model: "llama-3.3-70b-versatile",
       messages,
       max_tokens: maxTokens,
       response_format: { type: "json_object" },
+      temperature: 0.7,
     }),
   });
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`LLM API Error ${response.status}: ${errText}`);
+    throw new Error(`Groq API Error ${response.status}: ${errText}`);
   }
 
   const data = await response.json() as any;
@@ -138,7 +138,8 @@ async function generateSeoContent(
   description: string,
   category: string,
   providerPrice: number,
-  suggestedPrice: number
+  suggestedPrice: number,
+  groqApiKey: string
 ): Promise<SeoContent | null> {
   const basePrice = providerPrice || suggestedPrice || 0;
   const suggestedWebPrice = Math.round(basePrice * 1.30 + 15000);
@@ -174,10 +175,10 @@ GENERA exactamente este JSON con todos los campos completos:
   try {
     console.log(`[Extension API] Generando SEO con LLM para: "${title}"`);
 
-    const content = await callLLM([
+    const content = await callGroqLLM([
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
-    ], 4096);
+    ], groqApiKey, 4096);
 
     if (!content) {
       console.warn("[Extension API] LLM retornó respuesta vacía");
@@ -362,24 +363,32 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
     let seoGenerated = false;
 
     if (generateSEO) {
-      const seoContent = await generateSeoContent(
-        name.trim(),
-        description || "",
-        category || "General",
-        Number(providerPrice) || 0,
-        Number(suggestedPrice) || 0
-      );
+      // Leer la API Key de Groq guardada en la BD
+      const groqApiKey = await getSetting("groq_api_key");
 
-      if (seoContent) {
-        if (seoContent.web_title?.trim()) finalName = seoContent.web_title.trim();
-        if (seoContent.web_description?.trim()) finalDescription = seoContent.web_description.trim();
-        if (seoContent.web_short_description?.trim()) finalShortDescription = seoContent.web_short_description.trim();
-        if (seoContent.web_meta_title?.trim()) finalMetaTitle = seoContent.web_meta_title.trim();
-        if (seoContent.web_meta_description?.trim()) finalMetaDescription = seoContent.web_meta_description.trim();
-        if (seoContent.web_price > 0) finalPrice = String(seoContent.web_price);
-        if (seoContent.web_category?.trim()) finalCategory = seoContent.web_category.trim();
-        if (Array.isArray(seoContent.web_tags) && seoContent.web_tags.length > 0) finalTags = seoContent.web_tags;
-        seoGenerated = true;
+      if (!groqApiKey) {
+        console.warn("[Extension API] generateSEO=true pero no hay groq_api_key configurada en la BD. Guarda tu API Key de Groq en el panel admin → Extensión Chrome.");
+      } else {
+        const seoContent = await generateSeoContent(
+          name.trim(),
+          description || "",
+          category || "General",
+          Number(providerPrice) || 0,
+          Number(suggestedPrice) || 0,
+          groqApiKey
+        );
+
+        if (seoContent) {
+          if (seoContent.web_title?.trim()) finalName = seoContent.web_title.trim();
+          if (seoContent.web_description?.trim()) finalDescription = seoContent.web_description.trim();
+          if (seoContent.web_short_description?.trim()) finalShortDescription = seoContent.web_short_description.trim();
+          if (seoContent.web_meta_title?.trim()) finalMetaTitle = seoContent.web_meta_title.trim();
+          if (seoContent.web_meta_description?.trim()) finalMetaDescription = seoContent.web_meta_description.trim();
+          if (seoContent.web_price > 0) finalPrice = String(seoContent.web_price);
+          if (seoContent.web_category?.trim()) finalCategory = seoContent.web_category.trim();
+          if (Array.isArray(seoContent.web_tags) && seoContent.web_tags.length > 0) finalTags = seoContent.web_tags;
+          seoGenerated = true;
+        }
       }
     }
 
@@ -512,6 +521,12 @@ extensionRouter.post("/import-batch", async (req: Request, res: Response) => {
 
     const results: Array<{ dropiId: string; success: boolean; action?: string; error?: string; productUrl?: string; aiGenerated?: boolean }> = [];
 
+    // Leer la API Key de Groq una sola vez para todo el lote
+    const groqApiKey = generateSEO ? (await getSetting("groq_api_key")) : null;
+    if (generateSEO && !groqApiKey) {
+      console.warn("[Extension API] import-batch con generateSEO=true pero no hay groq_api_key en BD.");
+    }
+
     for (const item of productList) {
       try {
         const { dropiId, name, description, price, suggestedPrice, providerPrice, images, category, tags, sku, stock } = item;
@@ -542,14 +557,15 @@ extensionRouter.post("/import-batch", async (req: Request, res: Response) => {
         let finalTags: string[] = Array.isArray(tags) ? tags.filter((t: any) => typeof t === "string") : [];
         let seoGenerated = false;
 
-        // Generar SEO si se solicitó (con pausa para no saturar el LLM)
-        if (generateSEO) {
+        // Generar SEO si se solicitó y hay API Key de Groq disponible
+        if (generateSEO && groqApiKey) {
           const seoContent = await generateSeoContent(
             finalName,
             description || "",
             category || "General",
             Number(providerPrice) || 0,
-            Number(suggestedPrice) || 0
+            Number(suggestedPrice) || 0,
+            groqApiKey
           );
 
           if (seoContent) {
@@ -564,8 +580,8 @@ extensionRouter.post("/import-batch", async (req: Request, res: Response) => {
             seoGenerated = true;
           }
 
-          // Pausa entre productos para no saturar el LLM
-          await new Promise(r => setTimeout(r, 1000));
+          // Pausa entre productos para no saturar Groq
+          await new Promise(r => setTimeout(r, 1500));
         }
 
         if (finalCategory) {

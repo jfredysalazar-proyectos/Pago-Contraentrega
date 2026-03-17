@@ -7,7 +7,7 @@ import {
   Star, TrendingUp, CheckCircle, AlertCircle, Clock, BarChart3,
   Zap, Save, ExternalLink, Activity, Lock, User,
   FileText, Plus, Edit, Trash2, Search, X, MessageCircle,
-  Puzzle, Copy, Shield, Globe2
+  Puzzle, Copy, Shield, Globe2, Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -892,13 +892,16 @@ function ExtensionSection() {
   const utils = trpc.useUtils();
   const { data: allSettings } = trpc.settings.getAll.useQuery();
   const [tokenInput, setTokenInput] = useState("");
+  const [groqKeyInput, setGroqKeyInput] = useState("");
+  const [showGroqKey, setShowGroqKey] = useState(false);
   const [statusResult, setStatusResult] = useState<any>(null);
   const [testingStatus, setTestingStatus] = useState(false);
   const updateSetting = trpc.settings.update.useMutation({
-    onSuccess: () => { utils.settings.getAll.invalidate(); toast.success("Token guardado correctamente"); },
+    onSuccess: () => { utils.settings.getAll.invalidate(); toast.success("Configuración guardada correctamente"); },
     onError: (e) => toast.error(e.message),
   });
   const currentToken = allSettings?.find((s) => s.key === "extension_api_token")?.value || "";
+  const currentGroqKey = allSettings?.find((s) => s.key === "groq_api_key")?.value || "";
   const siteUrl = "https://pago-contraentrega-production.up.railway.app";
 
   const testConnection = async () => {
@@ -1003,6 +1006,59 @@ function ExtensionSection() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* API Key de Groq para SEO */}
+      <div className="mt-6 bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-purple-600" /> IA para SEO — API Key de Groq
+        </h3>
+        <div className="space-y-4">
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+            <p className="text-xs text-purple-700">
+              Cuando activas <strong>"✨ Enriquecer con IA"</strong> en la extensión, el servidor usa tu API Key de Groq para generar título SEO, descripción HTML larga, meta tags y precio optimizado. Obtén tu clave gratis en{" "}
+              <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="underline font-medium">console.groq.com/keys</a>.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Estado actual</label>
+            {currentGroqKey ? (
+              <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                <CheckCircle className="w-4 h-4" />
+                <span className="text-sm font-medium">API Key configurada</span>
+                <span className="text-xs text-green-600 font-mono">{currentGroqKey.substring(0, 8)}...{currentGroqKey.slice(-4)}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                <AlertCircle className="w-4 h-4" />
+                <span className="text-sm">Sin API Key — la generación de SEO no funcionará</span>
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nueva API Key de Groq</label>
+            <div className="flex items-center gap-2">
+              <Input
+                type={showGroqKey ? "text" : "password"}
+                placeholder="gsk_..."
+                value={groqKeyInput}
+                onChange={(e) => setGroqKeyInput(e.target.value)}
+                className="font-mono text-sm"
+              />
+              <Button size="sm" variant="outline" onClick={() => setShowGroqKey(!showGroqKey)}>
+                {showGroqKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">La clave empieza con <code>gsk_</code>. Se guarda cifrada en tu base de datos.</p>
+          </div>
+          <Button
+            onClick={() => updateSetting.mutate({ key: "groq_api_key", value: groqKeyInput })}
+            disabled={!groqKeyInput || !groqKeyInput.startsWith("gsk_") || updateSetting.isPending}
+            className="w-full bg-purple-600 hover:bg-purple-700"
+          >
+            <Save className="w-4 h-4 mr-2" /> Guardar API Key de Groq
+          </Button>
         </div>
       </div>
 
