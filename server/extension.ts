@@ -671,4 +671,62 @@ extensionRouter.post("/import-batch", async (req: Request, res: Response) => {
   }
 });
 
+// ─── POST /api/extension/set-groq-key ────────────────────────────────────────
+// Guarda la API Key de Groq en la BD. Protegido con el token de extensión
+// o con credenciales de admin (header X-Admin-Password).
+
+extensionRouter.post("/set-groq-key", async (req: Request, res: Response) => {
+  try {
+    const db = await getDb();
+    if (!db) {
+      res.status(503).json({ success: false, error: "Base de datos no disponible" });
+      return;
+    }
+
+    // Verificar autenticación: token de extensión O contraseña de admin
+    const adminPassword = req.headers["x-admin-password"] as string;
+    const isValidToken = await validateExtensionToken(req);
+
+    // Verificar contraseña de admin directamente
+    let isValidAdmin = false;
+    if (adminPassword) {
+      const adminUser = await db
+        .select()
+        .from(require("../drizzle/schema").users)
+        .where(eq(require("../drizzle/schema").users.username, "admin"))
+        .limit(1);
+      if (adminUser[0]) {
+        const bcrypt = require("bcryptjs");
+        isValidAdmin = await bcrypt.compare(adminPassword, adminUser[0].passwordHash);
+      }
+    }
+
+    if (!isValidToken && !isValidAdmin) {
+      res.status(401).json({ success: false, error: "No autorizado" });
+      return;
+    }
+
+    const { groqApiKey } = req.body;
+    if (!groqApiKey || typeof groqApiKey !== "string" || !groqApiKey.startsWith("gsk_")) {
+      res.status(400).json({ success: false, error: "API Key inválida. Debe empezar con gsk_" });
+      return;
+    }
+
+    // Guardar en la BD
+    const existing = await db.select().from(settings).where(eq(settings.key, "groq_api_key")).limit(1);
+    if (existing.length > 0) {
+      await db.update(settings).set({ value: groqApiKey }).where(eq(settings.key, "groq_api_key"));
+    } else {
+      await db.insert(settings).values({ key: "groq_api_key", value: groqApiKey });
+    }
+
+    console.log("[Extension API] ✅ API Key de Groq guardada en BD");
+    res.json({ success: true, message: "API Key de Groq guardada correctamente" });
+
+  } catch (error: any) {
+    console.error("[Extension API] Error guardando API Key de Groq:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default extensionRouter;
