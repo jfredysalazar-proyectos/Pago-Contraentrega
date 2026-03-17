@@ -167,6 +167,76 @@ const productsRouter = router({
       await db.update(products).set({ price: input.price }).where(eq(products.id, input.id));
       return { success: true };
     }),
+
+  // Admin: get product by id (for edit form)
+  getById: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ ctx, input }) => {
+      await adminProcedureCheck(ctx);
+      const db = await getDb();
+      if (!db) return null;
+      const rows = await db.select().from(products).where(eq(products.id, input.id)).limit(1);
+      return rows[0] ?? null;
+    }),
+
+  // Admin: full update of a product
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      name: z.string().min(1).max(512).optional(),
+      description: z.string().optional(),
+      shortDescription: z.string().optional(),
+      price: z.string().optional(),
+      comparePrice: z.string().optional().nullable(),
+      category: z.string().optional().nullable(),
+      brand: z.string().optional().nullable(),
+      sku: z.string().optional().nullable(),
+      stock: z.number().optional().nullable(),
+      tags: z.array(z.string()).optional().nullable(),
+      mainImage: z.string().optional().nullable(),
+      images: z.array(z.string()).optional().nullable(),
+      isActive: z.boolean().optional(),
+      isFeatured: z.boolean().optional(),
+      metaTitle: z.string().optional().nullable(),
+      metaDescription: z.string().optional().nullable(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await adminProcedureCheck(ctx);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { id, ...data } = input;
+      // Si cambia el nombre, actualizar el slug también
+      if (data.name) {
+        const newSlug = slugify(data.name);
+        // Verificar que el slug no esté ocupado por otro producto
+        const existing = await db.select({ id: products.id }).from(products).where(eq(products.slug, newSlug)).limit(1);
+        if (existing.length === 0 || existing[0].id === id) {
+          (data as any).slug = newSlug;
+        }
+      }
+      // Si cambia la categoría, asegurarse de que exista en la tabla categories
+      if (data.category && data.category.trim()) {
+        const catName = data.category.trim();
+        const catSlug = slugify(catName);
+        const existingCat = await db.select({ id: categories.id }).from(categories).where(eq(categories.slug, catSlug)).limit(1);
+        if (existingCat.length === 0) {
+          await db.insert(categories).values({ name: catName, slug: catSlug, isActive: true, sortOrder: 0 });
+        }
+      }
+      await db.update(products).set(data as any).where(eq(products.id, id));
+      return { success: true };
+    }),
+
+  // Admin: delete product
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await adminProcedureCheck(ctx);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      await db.delete(products).where(eq(products.id, input.id));
+      return { success: true };
+    }),
 });
 
 // ─── Sync Router ─────────────────────────────────────────────────────────────

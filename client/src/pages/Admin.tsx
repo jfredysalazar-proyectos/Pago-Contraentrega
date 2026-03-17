@@ -154,16 +154,172 @@ function DashboardSection() {
 }
 
 // ─── Products ─────────────────────────────────────────────────────────────────
+// ─── Modal de edición de producto ────────────────────────────────────────────
+function EditProductModal({ product, onClose, onSaved }: { product: any; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    name: product.name || "",
+    description: product.description || "",
+    shortDescription: product.shortDescription || "",
+    price: String(product.price || ""),
+    comparePrice: String(product.comparePrice || ""),
+    category: product.category || "",
+    brand: product.brand || "",
+    sku: product.sku || "",
+    stock: product.stock !== null && product.stock !== undefined ? String(product.stock) : "",
+    mainImage: product.mainImage || "",
+    tags: Array.isArray(product.tags) ? product.tags.join(", ") : "",
+    isActive: product.isActive ?? true,
+    isFeatured: product.isFeatured ?? false,
+    metaTitle: product.metaTitle || "",
+    metaDescription: product.metaDescription || "",
+  });
+  const updateMut = trpc.products.update.useMutation({
+    onSuccess: () => { toast.success("Producto actualizado correctamente"); onSaved(); onClose(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const tagsArray = form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
+    updateMut.mutate({
+      id: product.id,
+      name: form.name,
+      description: form.description || undefined,
+      shortDescription: form.shortDescription || undefined,
+      price: form.price || undefined,
+      comparePrice: form.comparePrice || null,
+      category: form.category || null,
+      brand: form.brand || null,
+      sku: form.sku || null,
+      stock: form.stock ? Number(form.stock) : null,
+      mainImage: form.mainImage || null,
+      tags: tagsArray.length > 0 ? tagsArray : null,
+      isActive: form.isActive,
+      isFeatured: form.isFeatured,
+      metaTitle: form.metaTitle || null,
+      metaDescription: form.metaDescription || null,
+    });
+  };
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900">Editar Producto</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><X className="w-5 h-5" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Imagen principal */}
+          {form.mainImage && (
+            <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+              <img src={form.mainImage} alt="preview" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 mb-1">URL Imagen Principal</label>
+                <Input value={form.mainImage} onChange={(e) => setForm({ ...form, mainImage: e.target.value })} className="text-xs" placeholder="https://..." />
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del Producto *</label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="Nombre del producto" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Precio (COP) *</label>
+              <Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required placeholder="89900" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Precio Tachado (COP)</label>
+              <Input type="number" value={form.comparePrice} onChange={(e) => setForm({ ...form, comparePrice: e.target.value })} placeholder="120000" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+              <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Electrónica, Hogar, etc." />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Marca</label>
+              <Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} placeholder="Marca del producto" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">SKU</label>
+              <Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="SKU-001" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Stock</label>
+              <Input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} placeholder="100" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descripción Corta</label>
+              <Input value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} placeholder="Resumen breve del producto" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descripción Completa</label>
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                rows={5}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-y"
+                placeholder="Descripción detallada del producto..."
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tags (separados por coma)</label>
+              <Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="electrónica, gadget, hogar" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Meta Título (SEO)</label>
+              <Input value={form.metaTitle} onChange={(e) => setForm({ ...form, metaTitle: e.target.value })} placeholder="Título para Google" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Meta Descripción (SEO)</label>
+              <Input value={form.metaDescription} onChange={(e) => setForm({ ...form, metaDescription: e.target.value })} placeholder="Descripción para Google" />
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
+              <label className="text-sm font-medium text-gray-700">Producto activo</label>
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch checked={form.isFeatured} onCheckedChange={(v) => setForm({ ...form, isFeatured: v })} />
+              <label className="text-sm font-medium text-gray-700">Producto destacado</label>
+            </div>
+          </div>
+          <div className="flex gap-3 justify-end pt-2 border-t border-gray-100">
+            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" className="bg-amber-600 hover:bg-amber-700" disabled={updateMut.isPending}>
+              {updateMut.isPending ? "Guardando..." : <><Save className="w-4 h-4 mr-2" /> Guardar Cambios</>}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function ProductsSection() {
   const [search, setSearch] = useState("");
   const [editingPrice, setEditingPrice] = useState<{ id: number; price: string } | null>(null);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.products.adminList.useQuery({ limit: 100, search: search || undefined });
   const toggleActive = trpc.products.toggleActive.useMutation({ onSuccess: () => { utils.products.adminList.invalidate(); toast.success("Actualizado"); } });
   const toggleFeatured = trpc.products.toggleFeatured.useMutation({ onSuccess: () => { utils.products.adminList.invalidate(); toast.success("Actualizado"); } });
   const updatePrice = trpc.products.updatePrice.useMutation({ onSuccess: () => { utils.products.adminList.invalidate(); setEditingPrice(null); toast.success("Precio actualizado"); } });
+  const deleteProduct = trpc.products.delete.useMutation({
+    onSuccess: () => { utils.products.adminList.invalidate(); toast.success("Producto eliminado"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const handleDelete = (p: any) => {
+    if (window.confirm(`¿Eliminar el producto "${p.name}"? Esta acción no se puede deshacer.`)) {
+      deleteProduct.mutate({ id: p.id });
+    }
+  };
   return (
     <div className="p-6">
+      {editingProduct && (
+        <EditProductModal
+          product={editingProduct}
+          onClose={() => setEditingProduct(null)}
+          onSaved={() => utils.products.adminList.invalidate()}
+        />
+      )}
       <PageHeader title="Productos" subtitle={`${data?.total ?? 0} productos en total`} />
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         <div className="p-4 border-b border-gray-100">
@@ -181,14 +337,14 @@ function ProductsSection() {
                 <th className="text-left px-4 py-3 font-semibold text-gray-600">Precio</th>
                 <th className="text-center px-4 py-3 font-semibold text-gray-600">Activo</th>
                 <th className="text-center px-4 py-3 font-semibold text-gray-600">Destacado</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600">Ver</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr><td colSpan={6} className="text-center py-8 text-gray-400">Cargando...</td></tr>
               ) : !data?.products.length ? (
-                <tr><td colSpan={6} className="text-center py-8 text-gray-400">No hay productos. Sincroniza desde Dropi.</td></tr>
+                <tr><td colSpan={6} className="text-center py-8 text-gray-400">No hay productos. Importa desde Dropi con la extensión Chrome.</td></tr>
               ) : data.products.map((p) => (
                 <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
@@ -223,9 +379,23 @@ function ProductsSection() {
                     </button>
                   </td>
                   <td className="px-4 py-3">
-                    <a href={`/producto/${p.slug}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
-                      <ExternalLink className="w-3 h-3" /> Ver
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a href={`/producto/${p.slug}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50">
+                        <ExternalLink className="w-3 h-3" /> Ver
+                      </a>
+                      <button
+                        onClick={() => setEditingProduct(p)}
+                        className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-700 px-2 py-1 rounded hover:bg-amber-50"
+                      >
+                        <Edit className="w-3 h-3" /> Editar
+                      </button>
+                      <button
+                        onClick={() => handleDelete(p)}
+                        className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50"
+                      >
+                        <Trash2 className="w-3 h-3" /> Eliminar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

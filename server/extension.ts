@@ -9,7 +9,7 @@
 
 import { Router, Request, Response } from "express";
 import { getDb } from "./db";
-import { products, settings } from "../drizzle/schema";
+import { products, settings, categories } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 
 const extensionRouter = Router();
@@ -36,6 +36,54 @@ async function getSetting(key: string): Promise<string | null> {
   if (!db) return null;
   const rows = await db.select().from(settings).where(eq(settings.key, key)).limit(1);
   return rows[0]?.value ?? null;
+}
+
+/**
+ * Asegura que una categoría exista en la tabla categories.
+ * Si no existe, la crea automáticamente.
+ * Retorna el nombre normalizado de la categoría.
+ */
+async function ensureCategory(categoryName: string): Promise<string> {
+  if (!categoryName || !categoryName.trim()) return categoryName;
+
+  const db = await getDb();
+  if (!db) return categoryName;
+
+  const name = categoryName.trim();
+  const catSlug = name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .trim();
+
+  try {
+    const existing = await db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(eq(categories.slug, catSlug))
+      .limit(1);
+
+    if (existing.length === 0) {
+      // Crear la categoría automáticamente
+      await db.insert(categories).values({
+        name,
+        slug: catSlug,
+        isActive: true,
+        sortOrder: 0,
+      });
+      console.log(`[Extension API] Categoría creada automáticamente: "${name}" (slug: ${catSlug})`);
+    }
+  } catch (err: any) {
+    // Si ya existe por race condition, ignorar
+    if (!err.message?.includes("Duplicate")) {
+      console.warn(`[Extension API] No se pudo crear categoría "${name}":`, err.message);
+    }
+  }
+
+  return name;
 }
 
 // ─── CORS para la extensión Chrome ────────────────────────────────────────────
@@ -212,6 +260,9 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
       ? tags.filter((t: any) => typeof t === "string")
       : [];
 
+    // Asegurar que la categoría exista en la BD (creación automática)
+    const finalCategory = category ? await ensureCategory(String(category)) : null;
+
     // Datos del producto a guardar
     const productData = {
       dropiId: String(dropiId),
@@ -221,7 +272,7 @@ extensionRouter.post("/import-product", async (req: Request, res: Response) => {
       price: finalPrice,
       comparePrice: finalComparePrice,
       sku: sku ? String(sku) : null,
-      category: category ? String(category) : null,
+      category: finalCategory,
       mainImage,
       images: imageArray.length > 0 ? imageArray : null,
       stock: stock ? Number(stock) : null,
