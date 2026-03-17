@@ -6,7 +6,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getDb, getUserByUsername } from "./db";
-import { products, orders, syncLogs, settings, whatsappConversations, whatsappMessages, users } from "../drizzle/schema";
+import { products, orders, syncLogs, settings, whatsappConversations, whatsappMessages, users, categories, sitePages } from "../drizzle/schema";
 import { eq, desc, like, and, or, sql, inArray } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { invokeLLM } from "./_core/llm";
@@ -528,10 +528,118 @@ async function runDropiSync(token: string, storeId: string | null, logId: number
   }
 }
 
-// ─── App Router ───────────────────────────────────────────────────────────────
+// ─── Categories Router ─────────────────────────────────────────────────────────────
 
-export const appRouter = router({
-  system: systemRouter,
+const categoriesRouter = router({
+  list: publicProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [];
+    return db.select().from(categories).where(eq(categories.isActive, true)).orderBy(categories.sortOrder, categories.name);
+  }),
+
+  adminList: protectedProcedure.query(async ({ ctx }) => {
+    await adminProcedureCheck(ctx);
+    const db = await getDb();
+    if (!db) return [];
+    return db.select().from(categories).orderBy(categories.sortOrder, categories.name);
+  }),
+
+  create: protectedProcedure
+    .input(z.object({
+      name: z.string().min(1).max(256),
+      description: z.string().optional(),
+      image: z.string().optional(),
+      metaTitle: z.string().optional(),
+      metaDescription: z.string().optional(),
+      isActive: z.boolean().default(true),
+      sortOrder: z.number().default(0),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await adminProcedureCheck(ctx);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const slug = slugify(input.name);
+      await db.insert(categories).values({ ...input, slug });
+      return { success: true };
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      name: z.string().min(1).max(256).optional(),
+      description: z.string().optional(),
+      image: z.string().optional(),
+      metaTitle: z.string().optional(),
+      metaDescription: z.string().optional(),
+      isActive: z.boolean().optional(),
+      sortOrder: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await adminProcedureCheck(ctx);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { id, ...data } = input;
+      if (data.name) (data as any).slug = slugify(data.name);
+      await db.update(categories).set(data).where(eq(categories.id, id));
+      return { success: true };
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await adminProcedureCheck(ctx);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      await db.delete(categories).where(eq(categories.id, input.id));
+      return { success: true };
+    }),
+});
+
+// ─── Site Pages Router ─────────────────────────────────────────────────────────────
+
+const sitePagesRouter = router({
+  bySlug: publicProcedure
+    .input(z.object({ slug: z.string() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return null;
+      const rows = await db.select().from(sitePages).where(and(eq(sitePages.slug, input.slug), eq(sitePages.isActive, true))).limit(1);
+      return rows[0] ?? null;
+    }),
+
+  adminList: protectedProcedure.query(async ({ ctx }) => {
+    await adminProcedureCheck(ctx);
+    const db = await getDb();
+    if (!db) return [];
+    return db.select().from(sitePages).orderBy(sitePages.slug);
+  }),
+
+  upsert: protectedProcedure
+    .input(z.object({
+      slug: z.string().min(1),
+      title: z.string().min(1),
+      content: z.string().optional(),
+      metaTitle: z.string().optional(),
+      metaDescription: z.string().optional(),
+      isActive: z.boolean().default(true),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await adminProcedureCheck(ctx);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const existing = await db.select({ id: sitePages.id }).from(sitePages).where(eq(sitePages.slug, input.slug)).limit(1);
+      if (existing.length > 0) {
+        await db.update(sitePages).set(input).where(eq(sitePages.slug, input.slug));
+      } else {
+        await db.insert(sitePages).values(input);
+      }
+      return { success: true };
+    }),
+});
+
+// ─── App Router ─────────────────────────────────────────────────────────────────
+
+export const appRouter = router({ system: systemRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -575,6 +683,8 @@ export const appRouter = router({
   orders: ordersRouter,
   settings: settingsRouter,
   whatsapp: whatsappRouter,
+  categories: categoriesRouter,
+  sitePages: sitePagesRouter,
 });
 
 export type AppRouter = typeof appRouter;

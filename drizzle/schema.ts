@@ -135,6 +135,37 @@ export const syncLogs = mysqlTable("sync_logs", {
 });
 export type SyncLog = typeof syncLogs.$inferSelect;
 
+// ─── Categories ─────────────────────────────────────────────────────────────
+export const categories = mysqlTable("categories", {
+  id: int("id").autoincrement().primaryKey(),
+  slug: varchar("slug", { length: 128 }).notNull().unique(),
+  name: varchar("name", { length: 256 }).notNull(),
+  description: text("description"),
+  image: text("image"),
+  metaTitle: varchar("metaTitle", { length: 256 }),
+  metaDescription: text("metaDescription"),
+  isActive: boolean("isActive").notNull().default(true),
+  sortOrder: int("sortOrder").default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Category = typeof categories.$inferSelect;
+export type InsertCategory = typeof categories.$inferInsert;
+
+// ─── Site Pages (Legal & Static) ─────────────────────────────────────────────
+export const sitePages = mysqlTable("site_pages", {
+  id: int("id").autoincrement().primaryKey(),
+  slug: varchar("slug", { length: 128 }).notNull().unique(),
+  title: varchar("title", { length: 256 }).notNull(),
+  content: text("content"),
+  metaTitle: varchar("metaTitle", { length: 256 }),
+  metaDescription: text("metaDescription"),
+  isActive: boolean("isActive").notNull().default(true),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type SitePage = typeof sitePages.$inferSelect;
+export type InsertSitePage = typeof sitePages.$inferInsert;
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
 export const settings = mysqlTable("settings", {
   id: int("id").autoincrement().primaryKey(),

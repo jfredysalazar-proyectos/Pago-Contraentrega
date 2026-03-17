@@ -70,6 +70,51 @@ async function runStartupMigration() {
   } catch (err: any) {
     console.warn('[Migration] Startup migration warning:', err.message);
   }
+  // Create categories table if not exists
+  try {
+    const db2 = await getDb();
+    if (db2) {
+      await db2.execute(sql`
+        CREATE TABLE IF NOT EXISTS categories (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          slug VARCHAR(128) NOT NULL UNIQUE,
+          name VARCHAR(256) NOT NULL,
+          description TEXT,
+          image TEXT,
+          metaTitle VARCHAR(256),
+          metaDescription TEXT,
+          isActive BOOLEAN NOT NULL DEFAULT TRUE,
+          sortOrder INT DEFAULT 0,
+          createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL
+        )
+      `);
+      console.log('[Migration] categories table ready');
+    }
+  } catch (err: any) {
+    console.warn('[Migration] categories table warning:', err.message);
+  }
+  // Create site_pages table if not exists
+  try {
+    const db3 = await getDb();
+    if (db3) {
+      await db3.execute(sql`
+        CREATE TABLE IF NOT EXISTS site_pages (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          slug VARCHAR(128) NOT NULL UNIQUE,
+          title VARCHAR(256) NOT NULL,
+          content TEXT,
+          metaTitle VARCHAR(256),
+          metaDescription TEXT,
+          isActive BOOLEAN NOT NULL DEFAULT TRUE,
+          updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL
+        )
+      `);
+      console.log('[Migration] site_pages table ready');
+    }
+  } catch (err: any) {
+    console.warn('[Migration] site_pages table warning:', err.message);
+  }
 }
 
 async function startServer() {

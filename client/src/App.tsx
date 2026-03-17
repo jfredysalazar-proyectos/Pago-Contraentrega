@@ -9,6 +9,7 @@ import Catalog from "./pages/Catalog";
 import ProductDetail from "./pages/ProductDetail";
 import TrackOrder from "./pages/TrackOrder";
 import Admin from "./pages/Admin";
+import SitePage from "./pages/SitePage";
 
 function Router() {
   return (
@@ -18,6 +19,17 @@ function Router() {
       <Route path="/producto/:slug" component={ProductDetail} />
       <Route path="/rastrear" component={TrackOrder} />
       <Route path="/admin" component={Admin} />
+      <Route path="/admin/productos" component={Admin} />
+      <Route path="/admin/categorias" component={Admin} />
+      <Route path="/admin/paginas" component={Admin} />
+      <Route path="/admin/sync" component={Admin} />
+      <Route path="/admin/pedidos" component={Admin} />
+      <Route path="/admin/configuracion" component={Admin} />
+      <Route path="/admin/whatsapp" component={Admin} />
+      <Route path="/politica-de-privacidad" component={SitePage} />
+      <Route path="/terminos-y-condiciones" component={SitePage} />
+      <Route path="/politica-de-cookies" component={SitePage} />
+      <Route path="/contacto" component={SitePage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
