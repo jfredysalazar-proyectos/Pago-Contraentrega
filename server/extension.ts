@@ -16,7 +16,38 @@ import { Router, Request, Response } from "express";
 import { getDb } from "./db";
 import { products, settings, categories } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
-import { invokeLLM } from "./_core/llm";
+// LLM directo via fetch (usa OPENAI_API_KEY y OPENAI_BASE_URL disponibles en Railway)
+async function callLLM(messages: Array<{role: string; content: string}>, maxTokens = 4096): Promise<string | null> {
+  const apiKey = process.env.OPENAI_API_KEY || process.env.BUILT_IN_FORGE_API_KEY || "";
+  const baseUrl = (process.env.OPENAI_BASE_URL || process.env.BUILT_IN_FORGE_API_URL || "https://api.manus.im/api/llm-proxy/v1").replace(/\/$/, "");
+
+  if (!apiKey) {
+    console.error("[Extension API] No hay API key de LLM configurada (OPENAI_API_KEY o BUILT_IN_FORGE_API_KEY)");
+    return null;
+  }
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      messages,
+      max_tokens: maxTokens,
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`LLM API Error ${response.status}: ${errText}`);
+  }
+
+  const data = await response.json() as any;
+  return data?.choices?.[0]?.message?.content ?? null;
+}
 
 const extensionRouter = Router();
 
@@ -143,17 +174,12 @@ GENERA exactamente este JSON con todos los campos completos:
   try {
     console.log(`[Extension API] Generando SEO con LLM para: "${title}"`);
 
-    const result = await invokeLLM({
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      responseFormat: { type: "json_object" },
-      maxTokens: 4096,
-    });
+    const content = await callLLM([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ], 4096);
 
-    const content = result.choices?.[0]?.message?.content;
-    if (!content || typeof content !== "string") {
+    if (!content) {
       console.warn("[Extension API] LLM retornó respuesta vacía");
       return null;
     }
@@ -163,7 +189,12 @@ GENERA exactamente este JSON con todos los campos completos:
       parsed = JSON.parse(content);
     } catch (e) {
       const clean = content.replace(/```json/g, "").replace(/```/g, "").trim();
-      parsed = JSON.parse(clean);
+      try {
+        parsed = JSON.parse(clean);
+      } catch (e2) {
+        console.error("[Extension API] No se pudo parsear JSON del LLM:", content.substring(0, 300));
+        return null;
+      }
     }
 
     // Asegurar precio como número
@@ -172,7 +203,7 @@ GENERA exactamente este JSON con todos los campos completos:
       parsed.web_price = parseInt(priceStr) || suggestedWebPrice;
     }
 
-    console.log(`[Extension API] ✅ SEO generado: título="${parsed.web_title}", desc=${parsed.web_description?.length || 0} chars`);
+    console.log(`[Extension API] ✅ SEO generado: título="${parsed.web_title}", desc=${parsed.web_description?.length || 0} chars, tags=${parsed.web_tags?.length || 0}`);
     return parsed;
 
   } catch (error: any) {
