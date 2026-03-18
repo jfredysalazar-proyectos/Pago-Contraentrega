@@ -531,13 +531,81 @@ export default function ProductDetail() {
         {/* Description */}
         {product.description && (
           <div className="mb-16">
-            <h2 className="text-2xl font-display font-bold mb-6" style={{ color: "var(--brand-navy)" }}>
-              Descripción del Producto
-            </h2>
+            <style>{`
+              .product-description h2 {
+                font-size: 1.35rem;
+                font-weight: 700;
+                color: var(--brand-navy);
+                margin-top: 2rem;
+                margin-bottom: 0.75rem;
+                padding-bottom: 0.4rem;
+                border-bottom: 2px solid var(--brand-gold);
+                font-family: var(--font-display, inherit);
+                line-height: 1.3;
+              }
+              .product-description h3 {
+                font-size: 1.1rem;
+                font-weight: 700;
+                color: var(--brand-navy);
+                margin-top: 1.5rem;
+                margin-bottom: 0.5rem;
+                padding-left: 0.75rem;
+                border-left: 3px solid var(--brand-gold);
+                font-family: var(--font-display, inherit);
+                line-height: 1.3;
+              }
+              .product-description h2:first-child,
+              .product-description h3:first-child {
+                margin-top: 0;
+              }
+              .product-description p {
+                color: var(--foreground);
+                line-height: 1.75;
+                margin-bottom: 0.85rem;
+                font-size: 0.9rem;
+              }
+              .product-description ul {
+                list-style: none;
+                padding: 0;
+                margin: 0.75rem 0 1.25rem 0;
+              }
+              .product-description ul li {
+                padding: 0.4rem 0 0.4rem 1.5rem;
+                position: relative;
+                font-size: 0.9rem;
+                color: var(--foreground);
+                line-height: 1.6;
+                border-bottom: 1px solid oklch(0.93 0.01 240);
+              }
+              .product-description ul li:last-child {
+                border-bottom: none;
+              }
+              .product-description ul li::before {
+                content: '✓';
+                position: absolute;
+                left: 0;
+                color: var(--brand-gold);
+                font-weight: 700;
+              }
+              .product-description strong {
+                color: var(--brand-navy);
+                font-weight: 600;
+              }
+              .product-description em {
+                color: oklch(0.5 0.02 240);
+                font-style: italic;
+              }
+              .product-description a {
+                color: var(--brand-gold);
+                text-decoration: none;
+              }
+              .product-description a:hover {
+                text-decoration: underline;
+              }
+            `}</style>
             <div
-              className="prose prose-sm max-w-none text-sm leading-relaxed"
-              style={{ color: "var(--foreground)" }}
-              dangerouslySetInnerHTML={{ __html: product.description.replace(/\n/g, "<br/>") }}
+              className="product-description"
+              dangerouslySetInnerHTML={{ __html: product.description.replace(/\n(?!<)/g, "<br/>") }}
             />
           </div>
         )}
